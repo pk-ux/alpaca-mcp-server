@@ -20,6 +20,7 @@ from alpaca.data.requests import (
     StockLatestBarRequest,
     StockLatestQuoteRequest,
     StockLatestTradeRequest,
+    StockSnapshotRequest,
     StockTradesRequest,
 )
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
@@ -477,6 +478,133 @@ async def get_stock_latest_bar(
             return f"No latest bar data found for {symbol}."
     except Exception as e:
         return f"Error fetching latest bar: {str(e)}"
+
+# ============================================================================
+# Market Data Tools - Stock Snapshot Data with Helper Functions
+# ============================================================================
+
+def _format_ohlcv_bar(bar, bar_type: str, include_time: bool = True) -> str:
+    """Helper function to format OHLCV bar data consistently."""
+    if not bar:
+        return ""
+    
+    time_format = '%Y-%m-%d %H:%M:%S %Z' if include_time else '%Y-%m-%d'
+    time_label = "Timestamp" if include_time else "Date"
+    
+    return f"""{bar_type}:
+  Open: ${bar.open:.2f}, High: ${bar.high:.2f}, Low: ${bar.low:.2f}, Close: ${bar.close:.2f}
+  Volume: {bar.volume:,}, {time_label}: {bar.timestamp.strftime(time_format)}
+
+"""
+
+def _format_quote_data(quote) -> str:
+    """Helper function to format quote data consistently."""
+    if not quote:
+        return ""
+    
+    return f"""Latest Quote:
+  Bid: ${quote.bid_price:.2f} x {quote.bid_size}, Ask: ${quote.ask_price:.2f} x {quote.ask_size}
+  Timestamp: {quote.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}
+
+"""
+
+def _format_trade_data(trade) -> str:
+    """Helper function to format trade data consistently."""
+    if not trade:
+        return ""
+    
+    optional_fields = []
+    if hasattr(trade, 'exchange') and trade.exchange:
+        optional_fields.append(f"Exchange: {trade.exchange}")
+    if hasattr(trade, 'conditions') and trade.conditions:
+        optional_fields.append(f"Conditions: {trade.conditions}")
+    if hasattr(trade, 'id') and trade.id:
+        optional_fields.append(f"ID: {trade.id}")
+    
+    optional_str = f", {', '.join(optional_fields)}" if optional_fields else ""
+    
+    return f"""Latest Trade:
+  Price: ${trade.price:.2f}, Size: {trade.size}{optional_str}
+  Timestamp: {trade.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}
+
+"""
+
+@mcp.tool()
+async def get_stock_snapshot(
+    symbol_or_symbols: Union[str, List[str]], 
+    feed: Optional[DataFeed] = None,
+    currency: Optional[SupportedCurrencies] = None
+) -> str:
+    """
+    Retrieves comprehensive snapshots of stock symbols including latest trade, quote, minute bar, daily bar, and previous daily bar.
+    
+    Args:
+        symbol_or_symbols: Single stock symbol or list of stock symbols (e.g., 'AAPL' or ['AAPL', 'MSFT'])
+        feed: The stock data feed to retrieve from (optional)
+        currency: The currency the data should be returned in (default: USD)
+    
+    Returns:
+        Formatted string with comprehensive snapshots including:
+        - latest_quote: Current bid/ask prices and sizes
+        - latest_trade: Most recent trade price, size, and exchange
+        - minute_bar: Latest minute OHLCV bar
+        - daily_bar: Current day's OHLCV bar  
+        - previous_daily_bar: Previous trading day's OHLCV bar
+    """
+    try:
+        # Create and execute request
+        request = StockSnapshotRequest(symbol_or_symbols=symbol_or_symbols, feed=feed, currency=currency)
+        snapshots = stock_historical_data_client.get_stock_snapshot(request)
+        
+        # Format response
+        symbols = [symbol_or_symbols] if isinstance(symbol_or_symbols, str) else symbol_or_symbols
+        results = ["Stock Snapshots:", "=" * 15, ""]
+        
+        for symbol in symbols:
+            snapshot = snapshots.get(symbol)
+            if not snapshot:
+                results.append(f"No data available for {symbol}\n")
+                continue
+            
+            # Build snapshot data using helper functions
+            snapshot_data = [
+                f"Symbol: {symbol}",
+                "-" * 15,
+                _format_quote_data(snapshot.latest_quote),
+                _format_trade_data(snapshot.latest_trade),
+                _format_ohlcv_bar(snapshot.minute_bar, "Latest Minute Bar", True),
+                _format_ohlcv_bar(snapshot.daily_bar, "Latest Daily Bar", False),
+                _format_ohlcv_bar(snapshot.previous_daily_bar, "Previous Daily Bar", False),
+            ]
+            
+            results.extend(filter(None, snapshot_data))  # Filter out empty strings
+        
+        return "\n".join(results)
+        
+    except APIError as api_error:
+        error_message = str(api_error)
+        # Handle specific data feed subscription errors
+        if "subscription" in error_message.lower() and ("sip" in error_message.lower() or "premium" in error_message.lower()):
+            return f"""
+                    Error: Premium data feed subscription required.
+
+                    The requested data feed requires a premium subscription. Available data feeds:
+
+                    • IEX (Default): Investor's Exchange data feed - Free with basic account
+                    • SIP: Securities Information Processor feed - Requires premium subscription
+                    • DELAYED_SIP: SIP data with 15-minute delay - Requires premium subscription  
+                    • OTC: Over the counter feed - Requires premium subscription
+
+                    Most users can access comprehensive market data using the default IEX feed.
+                    To use premium feeds (SIP, DELAYED_SIP, OTC), please upgrade your subscription.
+
+                    Original error: {error_message}
+                    """
+        else:
+            return f"API Error retrieving stock snapshots: {error_message}"
+            
+    except Exception as e:
+        return f"Error retrieving stock snapshots: {str(e)}"
 
 # ============================================================================
 # Order Management Tools
@@ -1010,13 +1138,13 @@ async def get_market_clock() -> str:
     try:
         clock = trade_client.get_clock()
         return f"""
-Market Status:
--------------
-Current Time: {clock.timestamp}
-Is Open: {'Yes' if clock.is_open else 'No'}
-Next Open: {clock.next_open}
-Next Close: {clock.next_close}
-"""
+                Market Status:
+                -------------
+                Current Time: {clock.timestamp}
+                Is Open: {'Yes' if clock.is_open else 'No'}
+                Next Open: {clock.next_open}
+                Next Close: {clock.next_close}
+                """
     except Exception as e:
         return f"Error fetching market clock: {str(e)}"
 
