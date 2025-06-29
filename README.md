@@ -175,20 +175,48 @@ The official VS Code setup document is available here: https://code.visualstudio
 
 1. Create `.vscode/mcp.json` in your project root.
 2. Add the Alpaca MCP server configuration manually to the mcp.json file:
+
+    For Linux/macOS:
     ```json
     {
-      "alpaca": {
-        "type": "stdio",
-        "command": "${workspaceFolder}/venv/bin/python",
-        "args": ["${workspaceFolder}/alpaca_mcp_server.py"],
-        "env": {
-          "ALPACA_API_KEY": "your_alpaca_api_key",
-          "ALPACA_SECRET_KEY": "your_alpaca_secret_key",
+      "mcp": {
+        "servers": {
+          "alpaca": {
+            "type": "stdio",
+            "command": "bash",
+            "args": ["-c", "cd ${workspaceFolder} && source ./venv/bin/activate && python alpaca_mcp_server.py"],
+            "env": {
+              "ALPACA_API_KEY": "your_alpaca_api_key",
+              "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
+            }
+          }
         }
       }
     }
     ```
-    **Note:** For Windows users, replace the "command" parameter with "${workspaceFolder}\\venv\\Scripts\\python.exe"
+
+    For Windows:
+    ```json
+    {
+      "mcp": {
+        "servers": {
+          "alpaca": {
+            "type": "stdio", 
+            "command": "cmd",
+            "args": ["/c", "cd /d ${workspaceFolder} && .\\venv\\Scripts\\activate && python alpaca_mcp_server.py"],
+            "env": {
+              "ALPACA_API_KEY": "your_alpaca_api_key",
+              "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
+            }
+          }
+        }
+      }
+    }
+    ```
+    **Note:** Replace `${workspaceFolder}` with your actual project path. For example:
+      - Linux/macOS: `/Users/username/Documents/alpaca-mcp-server`
+      - Windows: `C:\\Users\\username\\Documents\\alpaca-mcp-server`
+    
 
 **For user-wide settings:**
 
@@ -200,11 +228,11 @@ Specify the server in the `mcp` VS Code user settings (`settings.json`) to enabl
     "servers": {
       "alpaca": {
         "type": "stdio",
-        "command": "${workspaceFolder}/venv/bin/python",
-        "args": ["${workspaceFolder}/alpaca_mcp_server.py"],
+        "command": "bash",
+        "args": ["-c", "cd ${workspaceFolder} && source ./venv/bin/activate && python alpaca_mcp_server.py"],
         "env": {
           "ALPACA_API_KEY": "your_alpaca_api_key",
-          "ALPACA_SECRET_KEY": "your_alpaca_secret_key",
+          "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
         }
       }
     }
