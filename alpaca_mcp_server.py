@@ -1841,7 +1841,9 @@ async def place_option_market_order(
         
         # Convert order class string to enum if needed
         converted_order_class = _convert_order_class_string(order_class)
-        if isinstance(converted_order_class, str):  # Error message returned
+        if isinstance(converted_order_class, OrderClass):
+            order_class = converted_order_class
+        elif isinstance(converted_order_class, str):  # Error message returned
             return converted_order_class
         
         # Determine order class if not provided
