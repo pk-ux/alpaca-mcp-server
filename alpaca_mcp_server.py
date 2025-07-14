@@ -56,8 +56,23 @@ from alpaca.trading.requests import (
 )
 from mcp.server.fastmcp import FastMCP
 
-# Initialize FastMCP server
-mcp = FastMCP("alpaca-trading")
+def detect_pycharm_environment():
+    """
+    Detect if we're running in PyCharm using environment variable.
+    Set MCP_CLIENT=pycharm in your PyCharm MCP configuration.
+    """
+    mcp_client = os.getenv("MCP_CLIENT", "").lower()
+    return mcp_client == "pycharm"
+
+# Initialize FastMCP server with intelligent log level detection
+is_pycharm = detect_pycharm_environment()
+log_level = "ERROR" if is_pycharm else "INFO"
+
+# Optional: Print detection result for debugging (only in non-PyCharm environments)
+if not is_pycharm:
+    print(f"MCP Server starting with log_level={log_level} (PyCharm detected: {is_pycharm})")
+
+mcp = FastMCP("alpaca-trading", log_level=log_level)
 
 # Initialize Alpaca clients using environment variables
 # Import our .env file within the same directory
