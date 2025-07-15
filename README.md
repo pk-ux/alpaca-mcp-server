@@ -544,9 +544,13 @@ These examples demonstrate the server's ability to provide:
 
 The server maintains this level of detail and formatting across all supported queries, making it easy to understand and act on the information provided.
 
-## ⚠️ Security Notice
+## Security Notice
 
 This server can place real trades and access your portfolio. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies or multi-leg trades.
+
+## Usage Analytics Notice
+
+* The user agent for API calls defaults to `ALPACA-MCP-SERVER` to help Alpaca identify MCP server usage and improve user experience. You can opt out by adjusting the `_client_headers` variable in `alpaca_mcp_server.py` — though we kindly hope you'll keep it enabled to support ongoing improvements.
 
 ## License
 

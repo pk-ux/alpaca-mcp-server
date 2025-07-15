@@ -78,8 +78,8 @@ mcp = FastMCP("alpaca-trading", log_level=log_level)
 # Import our .env file within the same directory
 load_dotenv()
 
-API_KEY = os.getenv("ALPACA_API_KEY")
-API_SECRET = os.getenv("ALPACA_SECRET_KEY")
+TRADE_API_KEY = os.getenv("ALPACA_API_KEY")
+TRADE_API_SECRET = os.getenv("ALPACA_SECRET_KEY")
 ALPACA_PAPER_TRADE = os.getenv("ALPACA_PAPER_TRADE", "True")
 TRADE_API_URL = os.getenv("TRADE_API_URL")
 TRDE_API_WSS = os.getenv("TRDE_API_WSS")
@@ -87,18 +87,28 @@ DATA_API_URL = os.getenv("DATA_API_URL")
 STREAM_DATA_WSS = os.getenv("STREAM_DATA_WSS")
 
 # Check if keys are available
-if not API_KEY or not API_SECRET:
+if not TRADE_API_KEY or not TRADE_API_SECRET:
     raise ValueError("Alpaca API credentials not found in environment variables.")
 
 # Initialize clients
 # For trading
-trade_client = TradingClient(API_KEY, API_SECRET, paper=ALPACA_PAPER_TRADE)
+trade_client = TradingClient(TRADE_API_KEY, TRADE_API_SECRET, paper=ALPACA_PAPER_TRADE)
 # For historical market data
-stock_historical_data_client = StockHistoricalDataClient(API_KEY, API_SECRET)
+stock_historical_data_client = StockHistoricalDataClient(TRADE_API_KEY, TRADE_API_SECRET)
 # For streaming market data
-stock_data_stream_client = StockDataStream(API_KEY, API_SECRET, url_override=STREAM_DATA_WSS)
+stock_data_stream_client = StockDataStream(TRADE_API_KEY, TRADE_API_SECRET, url_override=STREAM_DATA_WSS)
 # For option historical data
-option_historical_data_client = OptionHistoricalDataClient(api_key=API_KEY, secret_key=API_SECRET)
+option_historical_data_client = OptionHistoricalDataClient(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
+
+# Configure client sessions for performance and compatibility improvements purposes
+_client_headers = {
+    'User-Agent': 'ALPACA-MCP-SERVER'
+}
+
+# Apply session configuration to improve API development experience
+trade_client._session.headers.update(_client_headers)
+stock_historical_data_client._session.headers.update(_client_headers)
+option_historical_data_client._session.headers.update(_client_headers)
 
 # ============================================================================
 # Account Information Tools
