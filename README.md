@@ -34,7 +34,7 @@ This is a Model Context Protocol (MCP) server implementation for Alpaca's Tradin
 
 ## 0. Prerequisites
 
-- Python 3.10+
+- Python
 - GitHub account
 - Alpaca API keys (with paper or live trading access)
 - Claude for Desktop or another compatible MCP client
