@@ -66,6 +66,8 @@ This is a Model Context Protocol (MCP) server implementation for Alpaca's Tradin
 After cloning and activating the virtual environment, your directory structure should look like this:
 ```
 alpaca-mcp-server/          ← This is the workspace folder (= project root)
+├──.github
+│   └── stale.yaml          ← GitHub Actions workflow for auto-closing stale issues/PRs
 ├── alpaca_mcp_server.py    ← Script is directly in workspace root
 ├── .vscode/                ← VS Code settings (for VS Code users)
 │   └── mcp.json
