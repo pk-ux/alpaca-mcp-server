@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import time
 from datetime import datetime, timedelta, date
 from typing import Dict, Any, List, Optional, Union
@@ -22,6 +23,7 @@ from alpaca.data.requests import (
     StockLatestTradeRequest,
     StockSnapshotRequest,
     StockTradesRequest,
+    OptionChainRequest
 )
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.trading.client import TradingClient
@@ -55,6 +57,18 @@ from alpaca.trading.requests import (
     UpdateWatchlistRequest,
 )
 from mcp.server.fastmcp import FastMCP
+
+# Configure Python path for local imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+github_core_path = os.path.join(current_dir, '.github', 'core')
+if github_core_path not in sys.path:
+    sys.path.insert(0, github_core_path)
+# Import the UserAgentMixin
+from user_agent_mixin import UserAgentMixin
+# Define new classes using the mixin
+class TradingClientSigned(UserAgentMixin, TradingClient): pass
+class StockHistoricalDataClientSigned(UserAgentMixin, StockHistoricalDataClient): pass
+class OptionHistoricalDataClientSigned(UserAgentMixin, OptionHistoricalDataClient): pass
 
 def detect_pycharm_environment():
     """
@@ -92,23 +106,13 @@ if not TRADE_API_KEY or not TRADE_API_SECRET:
 
 # Initialize clients
 # For trading
-trade_client = TradingClient(TRADE_API_KEY, TRADE_API_SECRET, paper=ALPACA_PAPER_TRADE)
+trade_client = TradingClientSigned(TRADE_API_KEY, TRADE_API_SECRET, paper=ALPACA_PAPER_TRADE)
 # For historical market data
-stock_historical_data_client = StockHistoricalDataClient(TRADE_API_KEY, TRADE_API_SECRET)
+stock_historical_data_client = StockHistoricalDataClientSigned(TRADE_API_KEY, TRADE_API_SECRET)
 # For streaming market data
 stock_data_stream_client = StockDataStream(TRADE_API_KEY, TRADE_API_SECRET, url_override=STREAM_DATA_WSS)
 # For option historical data
-option_historical_data_client = OptionHistoricalDataClient(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
-
-# Configure client sessions for performance and compatibility improvements purposes
-_client_headers = {
-    'User-Agent': 'ALPACA-MCP-SERVER'
-}
-
-# Apply session configuration to improve API development experience
-trade_client._session.headers.update(_client_headers)
-stock_historical_data_client._session.headers.update(_client_headers)
-option_historical_data_client._session.headers.update(_client_headers)
+option_historical_data_client = OptionHistoricalDataClientSigned(api_key=TRADE_API_KEY, secret_key=TRADE_API_SECRET)
 
 # ============================================================================
 # Account Information Tools
