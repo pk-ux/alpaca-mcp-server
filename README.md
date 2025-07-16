@@ -159,6 +159,45 @@ The Claude MCP CLI tool needs to be installed separately. Check following the of
 * [Learn how to set up MCP with Claude Code](https://docs.anthropic.com/en/docs/claude-code/mcp)
 * [Install, authenticate, and start using Claude Code on your development machine](https://docs.anthropic.com/en/docs/claude-code/setup)
 
+## Cursor Usage
+
+To use Alpaca MCP Server with Cursor, please follow the steps below. The official Cursor MCP setup document is available here: https://docs.cursor.com/context/mcp
+
+**Prerequisites**
+- Cursor IDE installed with Claude AI enabled
+- Python and virtual environment set up (follow Installation steps above)
+
+### Configure the MCP Server
+
+**Method 1: Using JSON Configuration**
+
+Create or edit `~/.cursor/mcp.json` (macOS/Linux) or `%USERPROFILE%\.cursor\mcp.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "alpaca": {
+      "command": "/path/to/your/alpaca-mcp-server/venv/bin/python",
+      "args": [
+        "/path/to/your/alpaca-mcp-server/alpaca_mcp_server.py"
+      ],
+      "env": {
+        "ALPACA_API_KEY": "your_alpaca_api_key",
+        "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
+      }
+    }
+  }
+}
+```
+
+**Method 2: Using Cursor Settings UI**
+
+1. Open Cursor Settings → **Tools & Integrations** → **MCP Tools**
+2. Click **"+ New MCP Server"**
+3. Configure with the same details as the JSON method above
+
+**Note:** Replace the paths with your actual project directory paths and API credentials.
+
 ## VS Code Usage
 
 To use Alpaca MCP Server with VS Code, please follow the steps below.
@@ -168,7 +207,7 @@ The official VS Code setup document is available here: https://code.visualstudio
 
 **Prerequisites**
 - VS Code with GitHub Copilot extension installed and active subscription
-- Python 3.10+ and virtual environment set up (follow Installation steps above)
+- Python and virtual environment set up (follow Installation steps above)
 - MCP support enabled in VS Code (see below)
 
 ### 1. Enable MCP Support in VS Code
@@ -325,11 +364,9 @@ Use this if you want to run a modified or development version of the server.
 ```
 Environment variables can be set either with `-e` flags or in the `"env"` object, but not both. For Claude Desktop, use the `"env"` object.
 
-**Security Note:**  
-Never share your API keys or commit them to public repositories. Be cautious when passing secrets as environment variables, especially in shared or production environments.
+**Security Note:**  Never share your API keys or commit them to public repositories. Be cautious when passing secrets as environment variables, especially in shared or production environments.
 
-**For more advanced Docker usage:**  
-See the [official Docker documentation](https://docs.docker.com/).
+**For more advanced Docker usage:**  See the [official Docker documentation](https://docs.docker.com/).
 
 ## 🔐 API Key Configuration for Live Trading
 
@@ -340,16 +377,17 @@ To enable **live trading with real funds**, update the following configuration f
 
 1. **Update environment file in the project directory**
 
-  Provide your live account keys as environment variables in the `.env` file:
-   ```
-   ALPACA_API_KEY = "your_alpaca_api_key_for_live_account"
-   ALPACA_SECRET_KEY = "your_alpaca_secret_key_for_live_account"
-   ALPACA_PAPER_TRADE = False
-   TRADE_API_URL = None
-   TRADE_API_WSS = None
-   DATA_API_URL = None
-   STREAM_DATA_WSS = None
-   ```
+    Provide your live account keys as environment variables in the `.env` file:
+    ```
+    ALPACA_API_KEY = "your_alpaca_api_key_for_live_account"
+    ALPACA_SECRET_KEY = "your_alpaca_secret_key_for_live_account"
+    ALPACA_PAPER_TRADE = False
+    TRADE_API_URL = None
+    TRADE_API_WSS = None
+    DATA_API_URL = None
+    STREAM_DATA_WSS = None
+    ```
+
 2. **Update Configuration file**
 
    For example, when using Claude Desktop, provide your live account keys as environment variables in `claude_desktop_config.json`:
@@ -385,10 +423,10 @@ To enable **live trading with real funds**, update the following configuration f
 
 * `get_stock_quote(symbol)` – Real-time bid/ask quote
 * `get_stock_bars(symbol, days=5, timeframe="1Day", limit=None, start=None, end=None)` – OHLCV historical bars with flexible timeframes (1Min, 5Min, 1Hour, 1Day, etc.)
-* `get_stock_latest_trade(symbol)` – Latest market trade price
-* `get_stock_latest_bar(symbol)` – Most recent OHLC bar
+* `get_stock_latest_trade(symbol, feed=None, currency=None)` – Latest market trade price
+* `get_stock_latest_bar(symbol, feed=None, currency=None)` – Most recent OHLC bar
 * `get_stock_snapshot(symbol_or_symbols, feed=None, currency=None)` – Comprehensive snapshot with latest quote, trade, minute bar, daily bar, and previous daily bar
-* `get_stock_trades(symbol, start_time, end_time)` – Trade-level history
+* `get_stock_trades(symbol, days=5, limit=None, sort=Sort.ASC, feed=None, currency=None, asof=None)` – Trade-level history
 
 ### Orders
 
@@ -399,10 +437,10 @@ To enable **live trading with real funds**, update the following configuration f
 
 ### Options
 
-* `get_option_contracts(underlying_symbol, expiration_date=None, expiration_month=None, expiration_year=None, expiration_week_start=None)` – Fetch contracts for specific date, month, or week (automatically provides guidance when >300 results)
+* `get_option_contracts(underlying_symbol, expiration_date=None, expiration_month=None, expiration_year=None, expiration_week_start=None, strike_price_gte=None, strike_price_lte=None, type=None, status=None, root_symbol=None, limit=None)` – Fetch contracts with comprehensive filtering options
 * `get_option_latest_quote(option_symbol)` – Latest bid/ask on contract
 * `get_option_snapshot(symbol_or_symbols)` – Get Greeks and underlying
-* `place_option_market_order(legs, order_class, quantity)` – Execute option strategy
+* `place_option_market_order(legs, order_class=None, quantity=1, time_in_force=TimeInForce.DAY, extended_hours=False)` – Execute option strategy
 
 ### Market Info & Corporate Actions
 
@@ -413,13 +451,13 @@ To enable **live trading with real funds**, update the following configuration f
 ### Watchlists
 
 * `create_watchlist(name, symbols)` – Create a new list
-* `update_watchlist(id, name, symbols)` – Modify an existing list
+* `update_watchlist(watchlist_id, name=None, symbols=None)` – Modify an existing list
 * `get_watchlists()` – Retrieve all saved watchlists
 
 ### Assets
 
 * `get_asset_info(symbol)` – Search asset metadata
-* `get_all_assets(status)` – List all tradable instruments
+* `get_all_assets(status=None, asset_class=None, exchange=None, attributes=None)` – List all tradable instruments with filtering options
 
 ## Example Natural Language Queries
 See the "Example Queries" section below for 50 real examples covering everything from trading to corporate data to option strategies.
