@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+import argparse
 from datetime import datetime, timedelta, date
 from typing import Dict, Any, List, Optional, Union
 
@@ -56,6 +57,7 @@ from alpaca.trading.requests import (
     TrailingStopOrderRequest,
     UpdateWatchlistRequest,
 )
+
 from mcp.server.fastmcp import FastMCP
 
 # Configure Python path for local imports
@@ -78,13 +80,58 @@ def detect_pycharm_environment():
     mcp_client = os.getenv("MCP_CLIENT", "").lower()
     return mcp_client == "pycharm"
 
+def parse_arguments():
+    """Parse command line arguments for transport configuration."""
+    parser = argparse.ArgumentParser(description="Alpaca MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http", "sse"],
+        default="stdio",
+        help="Transport method to use (default: stdio)"
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host to bind to for HTTP transport (default: 127.0.0.1)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind to for HTTP transport (default: 8000)"
+    )
+    return parser.parse_args()
+
+def setup_transport_config(args):
+    """Setup transport configuration based on command line arguments."""
+    if args.transport == "http":
+        return {
+            "transport": "http",
+            "host": args.host,
+            "port": args.port
+        }
+    elif args.transport == "sse":
+        print(f"Warning: SSE transport is deprecated. Consider using HTTP transport instead.")
+        return {
+            "transport": "sse",
+            "host": args.host,
+            "port": args.port
+        }
+    else:
+        return {
+            "transport": "stdio"
+        }
+
+# Parse arguments early to determine transport
+args = parse_arguments()
+
 # Initialize FastMCP server with intelligent log level detection
 is_pycharm = detect_pycharm_environment()
 log_level = "ERROR" if is_pycharm else "INFO"
 
 # Optional: Print detection result for debugging (only in non-PyCharm environments)
 if not is_pycharm:
-    print(f"MCP Server starting with log_level={log_level} (PyCharm detected: {is_pycharm})")
+    print(f"MCP Server starting with transport={args.transport}, log_level={log_level} (PyCharm detected: {is_pycharm})")
 
 mcp = FastMCP("alpaca-trading", log_level=log_level)
 
@@ -842,17 +889,17 @@ async def place_stock_order(
         # Submit order
         order = trade_client.submit_order(order_data)
         return f"""
-Order Placed Successfully:
--------------------------
-Order ID: {order.id}
-Symbol: {order.symbol}
-Side: {order.side}
-Quantity: {order.qty}
-Type: {order.type}
-Time In Force: {order.time_in_force}
-Status: {order.status}
-Client Order ID: {order.client_order_id}
-"""
+                Order Placed Successfully:
+                -------------------------
+                Order ID: {order.id}
+                Symbol: {order.symbol}
+                Side: {order.side}
+                Quantity: {order.qty}
+                Type: {order.type}
+                Time In Force: {order.time_in_force}
+                Status: {order.status}
+                Client Order ID: {order.client_order_id}
+                """
     except Exception as e:
         return f"Error placing order: {str(e)}"
 
@@ -1190,7 +1237,14 @@ async def get_market_calendar(start_date: str, end_date: str) -> str:
         str: Formatted string containing market calendar information
     """
     try:
-        calendar = trade_client.get_calendar(start=start_date, end=end_date)
+        # Convert string dates to date objects
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+        
+        # Create the request object with the correct parameters
+        calendar_request = GetCalendarRequest(start=start_dt, end=end_dt)
+        calendar = trade_client.get_calendar(calendar_request)
+        
         result = f"Market Calendar ({start_date} to {end_date}):\n----------------------------\n"
         for day in calendar:
             result += f"Date: {day.date}, Open: {day.open}, Close: {day.close}\n"
@@ -1265,6 +1319,9 @@ async def get_corporate_announcements(
 async def get_option_contracts(
     underlying_symbol: str,
     expiration_date: Optional[date] = None,
+    expiration_month: Optional[int] = None,
+    expiration_year: Optional[int] = None,
+    expiration_week_start: Optional[date] = None,
     strike_price_gte: Optional[str] = None,
     strike_price_lte: Optional[str] = None,
     type: Optional[ContractType] = None,
@@ -1278,7 +1335,10 @@ async def get_option_contracts(
     
     Args:
         underlying_symbol (str): The symbol of the underlying asset (e.g., 'AAPL')
-        expiration_date (Optional[date]): Optional expiration date for the options
+        expiration_date (Optional[date]): Optional specific expiration date for the options
+        expiration_month (Optional[int]): Optional expiration month (1-12) to get all contracts for that month
+        expiration_year (Optional[int]): Optional expiration year (required if expiration_month is provided)
+        expiration_week_start (Optional[date]): Optional start date of week to find all contracts expiring in that week (Monday-Sunday)
         strike_price_gte (Optional[str]): Optional minimum strike price
         strike_price_lte (Optional[str]): Optional maximum strike price
         type (Optional[ContractType]): Optional contract type (CALL or PUT)
@@ -1300,18 +1360,34 @@ async def get_option_contracts(
     Note:
         This endpoint returns contract specifications and static data. For real-time pricing
         information (bid/ask prices, sizes, etc.), use get_option_latest_quote instead.
+        
+        For month-based queries, use expiration_month and expiration_year instead of expiration_date.
+        For week-based queries, use expiration_week_start to find all contracts expiring in that week.
+        The function will check all dates from Monday through Sunday of that week.
+        
+        When more than 500 contracts are found, a guidance message is displayed instead of 
+        overwhelming output to help users narrow their search criteria.
     """
     try:
+        # Determine the appropriate expiration filtering strategy
+        use_specific_date = expiration_date is not None
+        use_month_filter = expiration_month is not None and expiration_year is not None
+        use_week_filter = expiration_week_start is not None
+        
+        # Create the request object - if filtering by month or week, don't use expiration_date
+        request_expiration_date = expiration_date if use_specific_date and not use_month_filter and not use_week_filter else None
+        
         # Create the request object with all available parameters
+        # Set a higher limit to get more contracts (default is 100, we use 1000 for comprehensive results)
         request = GetOptionContractsRequest(
             underlying_symbols=[underlying_symbol],
-            expiration_date=expiration_date,
+            expiration_date=request_expiration_date,
             strike_price_gte=strike_price_gte,
             strike_price_lte=strike_price_lte,
             type=type,
             status=status,
             root_symbol=root_symbol,
-            limit=limit
+            limit=limit if limit else 1000  # Default to 1000 to get more comprehensive results
         )
         
         # Get the option contracts
@@ -1320,12 +1396,64 @@ async def get_option_contracts(
         if not response or not response.option_contracts:
             return f"No option contracts found for {underlying_symbol} matching the criteria."
         
+        # Filter by month or week if specified
+        contracts_to_display = response.option_contracts
+        if use_month_filter:
+            contracts_to_display = [
+                contract for contract in response.option_contracts 
+                if contract.expiration_date.month == expiration_month and contract.expiration_date.year == expiration_year
+            ]
+            
+            if not contracts_to_display:
+                month_name = date(expiration_year, expiration_month, 1).strftime("%B")
+                return f"No option contracts found for {underlying_symbol} expiring in {month_name} {expiration_year}."
+        
+        elif use_week_filter:
+            # Calculate the week range (Monday to Sunday)
+            from datetime import timedelta
+            
+            # Find the Monday of the week containing expiration_week_start
+            days_since_monday = expiration_week_start.weekday()
+            week_start = expiration_week_start - timedelta(days=days_since_monday)
+            week_end = week_start + timedelta(days=6)  # Sunday
+            
+            contracts_to_display = [
+                contract for contract in response.option_contracts 
+                if week_start <= contract.expiration_date <= week_end
+            ]
+            
+            if not contracts_to_display:
+                return f"No option contracts found for {underlying_symbol} expiring during the week of {week_start.strftime('%B %d, %Y')}."
+        
         # Format the response
-        result = f"Option Contracts for {underlying_symbol}:\n"
+        if use_month_filter:
+            month_name = date(expiration_year, expiration_month, 1).strftime("%B")
+            result = f"Option Contracts for {underlying_symbol} expiring in {month_name} {expiration_year}:\n"
+        elif use_week_filter:
+            from datetime import timedelta
+            days_since_monday = expiration_week_start.weekday()
+            week_start = expiration_week_start - timedelta(days=days_since_monday)
+            week_end = week_start + timedelta(days=6)
+            result = f"Option Contracts for {underlying_symbol} expiring during the week of {week_start.strftime('%B %d')} - {week_end.strftime('%B %d, %Y')}:\n"
+        else:
+            result = f"Option Contracts for {underlying_symbol}:\n"
         result += "----------------------------------------\n"
         
-        for contract in response.option_contracts:
-            result += f"""
+        # Check if there are too many results and provide guidance instead of overwhelming output
+        total_contracts = len(contracts_to_display)
+        max_display_contracts = 500  # Threshold to limit display and show guidance message instead
+        
+        # Sort contracts by expiration date and strike price
+        contracts_to_display.sort(key=lambda x: (x.expiration_date, float(x.strike_price)))
+        
+        if total_contracts > max_display_contracts:
+            # Too many results - provide simple guidance
+            result += f"Found {total_contracts} contracts. For easier viewing, please specify a particular expiration date or strike price range."
+            
+        else:
+            # Normal display for manageable number of results
+            for contract in contracts_to_display:
+                result += f"""
                 Symbol: {contract.symbol}
                 Name: {contract.name}
                 Type: {contract.type}
@@ -1342,6 +1470,18 @@ async def get_option_contracts(
                 Close Price Date: {contract.close_price_date}
                 -------------------------
                 """
+        
+        # Add summary information
+        if use_month_filter:
+            month_name = date(expiration_year, expiration_month, 1).strftime("%B")
+            result += f"\nTotal contracts found for {underlying_symbol} in {month_name} {expiration_year}: {total_contracts}"
+        elif use_week_filter:
+            from datetime import timedelta
+            days_since_monday = expiration_week_start.weekday()
+            week_start = expiration_week_start - timedelta(days=days_since_monday)
+            result += f"\nTotal contracts found for {underlying_symbol} during the week of {week_start.strftime('%B %d, %Y')}: {total_contracts}"
+        else:
+            result += f"\nTotal contracts found for {underlying_symbol}: {total_contracts}"
         
         return result
         
@@ -1982,4 +2122,20 @@ def parse_timeframe_with_enums(timeframe_str: str) -> Optional[TimeFrame]:
 
 # Run the server
 if __name__ == "__main__":
-    mcp.run(transport='stdio')
+    # Setup transport configuration based on command line arguments
+    transport_config = setup_transport_config(args)
+    
+    try:
+        # Run server with the specified transport
+        mcp.run(**transport_config)
+    except Exception as e:
+        if args.transport in ["http", "sse"]:
+            print(f"Error starting {args.transport} server on {args.host}:{args.port}: {e}")
+            print("Common solutions:")
+            print(f"1. Ensure port {args.port} is available")
+            print(f"2. Check if another service is using port {args.port}")
+            print("3. Try a different port with --port <port_number>")
+            print("4. For remote access, ensure firewall allows the port")
+        else:
+            print(f"Error starting MCP server: {e}")
+        sys.exit(1)

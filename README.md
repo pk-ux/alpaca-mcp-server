@@ -101,19 +101,34 @@ alpaca-mcp-server/          ← This is the workspace folder (= project root)
    STREAM_DATA_WSS = None
    ```
 
+## 3. Start the MCP Server
+
+Open a terminal in the project root directory and run the following command:
+
+**For local usage (default - stdio transport):**
+```bash
+python alpaca_mcp_server.py
+```
+
+**For remote usage (HTTP transport):**
+```bash
+python alpaca_mcp_server.py --transport http --host 0.0.0.0 --port 8000
+```
+
+**Available transport options:**
+- `--transport stdio` (default): Standard input/output for local client connections
+- `--transport http`: HTTP transport for remote client connections
+- `--transport sse`: Server-Sent Events transport for remote connections (deprecated)
+- `--host HOST`: Host to bind to for HTTP/SSE transport (default: 127.0.0.1, use 0.0.0.0 for remote access)
+- `--port PORT`: Port to bind to for HTTP/SSE transport (default: 8000)
+
+**Note:** For more information about MCP transport methods, see the [official MCP transport documentation](https://modelcontextprotocol.io/docs/concepts/transports).
+
 ## Claude Desktop Usage
 
 To use Alpaca MCP Server with Claude Desktop, please follow the steps below. The official Claude Desktop setup document is available here: https://modelcontextprotocol.io/quickstart/user
 
-### Start the MCP Server
-
-Open a terminal in the project root directory and run the following command (or use `python -m alpaca_mcp_server`):
-
-```bash
-python alpaca_mcp_server.py 
-```
-
-### Claude for Desktop Configuration
+### Configure Claude Desktop
 
 1. Open Claude Desktop
 2. Navigate to: `Settings → Developer → Edit Config`
@@ -122,6 +137,7 @@ python alpaca_mcp_server.py
   **Note:**\
     Replace <project_root> with the path to your cloned alpaca-mcp-server directory. This should point to the Python executable inside the virtual environment you created with `python3 -m venv venv` in the terminal.
 
+**For local usage (stdio transport - recommended):**
 ```json
 {
   "mcpServers": {
@@ -130,6 +146,22 @@ python alpaca_mcp_server.py
       "args": [
         "/path/to/alpaca-mcp-server/alpaca_mcp_server.py"
       ],
+      "env": {
+        "ALPACA_API_KEY": "your_alpaca_api_key_for_paper_account",
+        "ALPACA_SECRET_KEY": "your_alpaca_secret_key_for_paper_account"
+      }
+    }
+  }
+}
+```
+
+**For remote usage (HTTP transport):**
+```json
+{
+  "mcpServers": {
+    "alpaca": {
+      "transport": "http",
+      "url": "http://your-server-ip:8000/mcp",
       "env": {
         "ALPACA_API_KEY": "your_alpaca_api_key_for_paper_account",
         "ALPACA_SECRET_KEY": "your_alpaca_secret_key_for_paper_account"
@@ -368,7 +400,7 @@ Environment variables can be set either with `-e` flags or in the `"env"` object
 
 **For more advanced Docker usage:**  See the [official Docker documentation](https://docs.docker.com/).
 
-## 🔐 API Key Configuration for Live Trading
+## 4. API Key Configuration for Live Trading
 
 This MCP server connects to Alpaca's **paper trading API** by default for safe testing.
 To enable **live trading with real funds**, update the following configuration files:
@@ -585,9 +617,57 @@ These examples demonstrate the server's ability to provide:
 
 The server maintains this level of detail and formatting across all supported queries, making it easy to understand and act on the information provided.
 
+## HTTP Transport for Remote Usage
+
+For users who need to run the MCP server on a remote machine (e.g., Ubuntu server) and connect from a different machine (e.g., Windows Claude Desktop), use HTTP transport:
+
+### Server Setup (Remote Machine)
+```bash
+# Start server with HTTP transport
+python alpaca_mcp_server.py --transport http --host 0.0.0.0 --port 8000
+
+# For systemd service (example from GitHub issue #6)
+# Update your start script to use HTTP transport
+#!/bin/bash
+cd /root/alpaca-mcp-server
+source venv/bin/activate
+exec python3 -u alpaca_mcp_server.py --transport http --host 0.0.0.0 --port 8000
+```
+
+**Remote Access Options:**
+1. **Direct binding**: Use `--host 0.0.0.0` to allow external connections (ensure firewall is configured)
+2. **Reverse proxy**: Use nginx/Apache to expose the service securely
+3. **SSH tunneling**: `ssh -L 8000:localhost:8000 user@your-server` for secure access
+
+### Client Setup
+Update your Claude Desktop configuration to use HTTP:
+```json
+{
+  "mcpServers": {
+    "alpaca": {
+      "transport": "http",
+      "url": "http://your-server-ip:8000/mcp",
+      "env": {
+        "ALPACA_API_KEY": "your_alpaca_api_key",
+        "ALPACA_SECRET_KEY": "your_alpaca_secret_key"
+      }
+    }
+  }
+}
+```
+
+### Troubleshooting HTTP Transport Issues
+- **Port not listening**: Ensure the server started successfully and check firewall settings
+- **Connection refused**: Verify the host IP and port are correct (default: 127.0.0.1:8000)
+- **ENOENT errors**: Make sure you're using the updated server command with `--transport http`
+- **Remote access**: Use `--host 0.0.0.0` for external access or set up reverse proxy/SSH tunnel
+- **Firewall**: Open the specified port in your firewall if binding to 0.0.0.0
+
 ## Security Notice
 
 This server can place real trades and access your portfolio. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies or multi-leg trades.
+
+**HTTP Transport Security**: When using HTTP transport, the server binds to localhost (127.0.0.1:8000) by default for security. For remote access, use `--host 0.0.0.0` with proper firewall configuration, or use a reverse proxy with authentication, or SSH tunneling for secure access.
 
 ## Usage Analytics Notice
 
