@@ -25,7 +25,7 @@ This is a Model Context Protocol (MCP) server implementation for Alpaca's Tradin
 - **Market Status & Corporate Actions**
   - Check if markets are open
   - Fetch market calendar and trading sessions
-  - View historical corporate announcements (earnings, splits, dividends)
+  - View upcoming / historical corporate announcements (earnings, splits, dividends)
 - **Watchlist Management**
   - Create, update, and view personal watchlists
   - Manage multiple watchlists for tracking assets

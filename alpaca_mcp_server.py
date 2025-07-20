@@ -122,15 +122,22 @@ def setup_transport_config(args):
             "transport": "stdio"
         }
 
-# Parse arguments early to determine transport
-args = parse_arguments()
+# Default args for when module is imported (not run directly)
+class DefaultArgs:
+    def __init__(self):
+        self.transport = "stdio"
+        # host and port are only set when needed (via argument parsing)
+
+# Only parse arguments when running as main script, use defaults when imported
+args = DefaultArgs()
 
 # Initialize FastMCP server with intelligent log level detection
 is_pycharm = detect_pycharm_environment()
 log_level = "ERROR" if is_pycharm else "INFO"
 
 # Optional: Print detection result for debugging (only in non-PyCharm environments)
-if not is_pycharm:
+# Only print when running as main script to avoid noise when imported
+if not is_pycharm and __name__ == "__main__":
     print(f"MCP Server starting with transport={args.transport}, log_level={log_level} (PyCharm detected: {is_pycharm})")
 
 mcp = FastMCP("alpaca-trading", log_level=log_level)
@@ -2122,6 +2129,9 @@ def parse_timeframe_with_enums(timeframe_str: str) -> Optional[TimeFrame]:
 
 # Run the server
 if __name__ == "__main__":
+    # Parse command line arguments when running as main script
+    args = parse_arguments()
+    
     # Setup transport configuration based on command line arguments
     transport_config = setup_transport_config(args)
     
