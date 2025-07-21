@@ -112,15 +112,15 @@ python alpaca_mcp_server.py
 
 **For remote usage (HTTP transport):**
 ```bash
-python alpaca_mcp_server.py --transport http --host 0.0.0.0 --port 8000
+python alpaca_mcp_server.py --transport http
 ```
 
 **Available transport options:**
 - `--transport stdio` (default): Standard input/output for local client connections
-- `--transport http`: HTTP transport for remote client connections
+- `--transport http`: HTTP transport for remote client connections (runs on 127.0.0.1:8000)
 - `--transport sse`: Server-Sent Events transport for remote connections (deprecated)
-- `--host HOST`: Host to bind to for HTTP/SSE transport (default: 127.0.0.1, use 0.0.0.0 for remote access)
-- `--port PORT`: Port to bind to for HTTP/SSE transport (default: 8000)
+- `--host HOST`: Host preference (Note: Official MCP SDK uses fixed 127.0.0.1:8000 for HTTP)
+- `--port PORT`: Port preference (Note: Official MCP SDK uses fixed 127.0.0.1:8000 for HTTP)
 
 **Note:** For more information about MCP transport methods, see the [official MCP transport documentation](https://modelcontextprotocol.io/docs/concepts/transports).
 
@@ -624,21 +624,21 @@ For users who need to run the MCP server on a remote machine (e.g., Ubuntu serve
 
 ### Server Setup (Remote Machine)
 ```bash
-# Start server with HTTP transport
-python alpaca_mcp_server.py --transport http --host 0.0.0.0 --port 8000
+# Start server with HTTP transport (runs on 127.0.0.1:8000)
+python alpaca_mcp_server.py --transport http
 
 # For systemd service (example from GitHub issue #6)
 # Update your start script to use HTTP transport
 #!/bin/bash
 cd /root/alpaca-mcp-server
 source venv/bin/activate
-exec python3 -u alpaca_mcp_server.py --transport http --host 0.0.0.0 --port 8000
+exec python3 -u alpaca_mcp_server.py --transport http
 ```
 
 **Remote Access Options:**
-1. **Direct binding**: Use `--host 0.0.0.0` to allow external connections (ensure firewall is configured)
-2. **Reverse proxy**: Use nginx/Apache to expose the service securely
-3. **SSH tunneling**: `ssh -L 8000:localhost:8000 user@your-server` for secure access
+1. **SSH tunneling**: `ssh -L 8000:localhost:8000 user@your-server` for secure access (recommended)
+2. **Reverse proxy**: Use nginx/Apache to expose the service securely with authentication
+3. **Direct access**: Server runs on localhost:8000 - configure firewall/proxy for external access
 
 ### Client Setup
 Update your Claude Desktop configuration to use HTTP:
@@ -659,16 +659,16 @@ Update your Claude Desktop configuration to use HTTP:
 
 ### Troubleshooting HTTP Transport Issues
 - **Port not listening**: Ensure the server started successfully and check firewall settings
-- **Connection refused**: Verify the host IP and port are correct (default: 127.0.0.1:8000)
+- **Connection refused**: Verify the server is running on 127.0.0.1:8000 (fixed by MCP SDK)
 - **ENOENT errors**: Make sure you're using the updated server command with `--transport http`
-- **Remote access**: Use `--host 0.0.0.0` for external access or set up reverse proxy/SSH tunnel
-- **Firewall**: Open the specified port in your firewall if binding to 0.0.0.0
+- **Remote access**: Use SSH tunneling or reverse proxy since server only binds to localhost
+- **Port conflicts**: If port 8000 is busy, stop the conflicting service (MCP SDK uses fixed port)
 
 ## Security Notice
 
 This server can place real trades and access your portfolio. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies or multi-leg trades.
 
-**HTTP Transport Security**: When using HTTP transport, the server binds to localhost (127.0.0.1:8000) by default for security. For remote access, use `--host 0.0.0.0` with proper firewall configuration, or use a reverse proxy with authentication, or SSH tunneling for secure access.
+**HTTP Transport Security**: When using HTTP transport, the server binds to localhost (127.0.0.1:8000) only for security. For remote access, use SSH tunneling (`ssh -L 8000:localhost:8000 user@server`) or a reverse proxy with authentication for secure access.
 
 ## Usage Analytics Notice
 

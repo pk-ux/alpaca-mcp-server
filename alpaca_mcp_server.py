@@ -87,18 +87,18 @@ def parse_arguments():
         "--transport",
         choices=["stdio", "http", "sse"],
         default="stdio",
-        help="Transport method to use (default: stdio)"
+        help="Transport method to use (default: stdio). Note: WebSocket not supported, use HTTP for remote connections"
     )
     parser.add_argument(
         "--host",
         default="127.0.0.1",
-        help="Host to bind to for HTTP transport (default: 127.0.0.1)"
+        help="Host preference for HTTP transport (Note: Official MCP SDK uses fixed 127.0.0.1:8000)"
     )
     parser.add_argument(
         "--port",
         type=int,
         default=8000,
-        help="Port to bind to for HTTP transport (default: 8000)"
+        help="Port preference for HTTP transport (Note: Official MCP SDK uses fixed 127.0.0.1:8000)"
     )
     return parser.parse_args()
 
@@ -2137,15 +2137,20 @@ if __name__ == "__main__":
     
     try:
         # Run server with the specified transport
-        mcp.run(**transport_config)
+        if args.transport == "http":
+            mcp.run(transport="streamable-http")
+        elif args.transport == "sse":
+            mcp.run(transport="sse")
+        else:
+            mcp.run(transport="stdio")
     except Exception as e:
         if args.transport in ["http", "sse"]:
-            print(f"Error starting {args.transport} server on {args.host}:{args.port}: {e}")
+            print(f"Error starting {args.transport} server: {e}")
+            print("Note: Official MCP SDK uses fixed defaults (127.0.0.1:8000 for HTTP)")
             print("Common solutions:")
-            print(f"1. Ensure port {args.port} is available")
-            print(f"2. Check if another service is using port {args.port}")
-            print("3. Try a different port with --port <port_number>")
-            print("4. For remote access, ensure firewall allows the port")
+            print("1. Ensure port 8000 is available")
+            print("2. Check if another service is using port 8000")
+            print("3. For remote access, consider using SSH tunneling or reverse proxy")
         else:
             print(f"Error starting MCP server: {e}")
         sys.exit(1)
