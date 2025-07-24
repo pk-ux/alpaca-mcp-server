@@ -503,27 +503,27 @@ See the "Example Queries" section below for 50 real examples covering everything
 6. Cancel the order with ID abc123.
 7. Liquidate my entire position in GOOGL.
 8. Close 10% of my position in NVDA.
-9. How many shares of AMZN do I currently hold?
-10. Place a limit order to buy 100 shares of MSFT at $450.
-11. Place a market order to sell 25 shares of META.
+9. Place a limit order to buy 100 shares of MSFT at $450.
+10. Place a market order to sell 25 shares of META.
 
 ### Option Trading
-12. Show me available option contracts for AAPL expiring next month.
-13. Get the latest quote for the AAPL250613C00200000 option.
-14. Retrieve the option snapshot for the SPY250627P00400000 option.
-15. Liquidate my position in 2 contracts of QQQ calls expiring next week.
-16. Place a market order to buy 1 call option on AAPL expiring next Friday.
-17. What are the option Greeks for the TSLA250620P00500000 option?
-18. Find TSLA option contracts with strike prices within 5% of the current market price.
-19. Get SPY call options expiring the week of June 16th, 2025, within 10% of market price.
-20. Place a bull call spread using AAPL June 6th options: one with a 190.00 strike and the other with a 200.00 strike.
+11. Show me available option contracts for AAPL expiring next month.
+12. Get the latest quote for the AAPL250613C00200000 option.
+13. Retrieve the option snapshot for the SPY250627P00400000 option.
+14. Liquidate my position in 2 contracts of QQQ calls expiring next week.
+15. Place a market order to buy 1 call option on AAPL expiring next Friday.
+16. What are the option Greeks for the TSLA250620P00500000 option?
+17. Find TSLA option contracts with strike prices within 5% of the current market price.
+18. Get SPY call options expiring the week of June 16th, 2025, within 10% of market price.
+19. Place a bull call spread using AAPL June 6th options: one with a 190.00 strike and the other with a 200.00 strike.
 
 ### Market Information
-21. Is the US stock market currently open?
-22. What are the market open and close times today?
-23. Show me the market calendar for next week.
-24. Are there any corporate announcements for major tech stocks this month?
-25. What are the next dividend announcements for SPY?
+20. Is the US stock market currently open?
+21. What are the market open and close times today?
+22. Show me the market calendar for next week.
+23. Show me recent cash dividends and stock splits for AAPL, MSFT, and GOOGL in the last 3 months.
+24. Get all corporate actions for SPY including dividends, splits, and any mergers in the past year.
+25. What are the upcoming corporate actions scheduled for SPY in the next 6 months?
 
 ### Historical & Real-time Data
 26. Show me AAPL's daily price history for the last 5 trading days.
