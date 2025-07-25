@@ -117,10 +117,10 @@ python alpaca_mcp_server.py --transport http
 
 **Available transport options:**
 - `--transport stdio` (default): Standard input/output for local client connections
-- `--transport http`: HTTP transport for remote client connections (runs on 127.0.0.1:8000)
+- `--transport http`: HTTP transport for remote client connections (default: 127.0.0.1:8000)
 - `--transport sse`: Server-Sent Events transport for remote connections (deprecated)
-- `--host HOST`: Host preference (Note: Official MCP SDK uses fixed 127.0.0.1:8000 for HTTP)
-- `--port PORT`: Port preference (Note: Official MCP SDK uses fixed 127.0.0.1:8000 for HTTP)
+- `--host HOST`: Host to bind the server to for HTTP/SSE transport (default: 127.0.0.1)
+- `--port PORT`: Port to bind the server to for HTTP/SSE transport (default: 8000)
 
 **Note:** For more information about MCP transport methods, see the [official MCP transport documentation](https://modelcontextprotocol.io/docs/concepts/transports).
 
@@ -624,21 +624,24 @@ For users who need to run the MCP server on a remote machine (e.g., Ubuntu serve
 
 ### Server Setup (Remote Machine)
 ```bash
-# Start server with HTTP transport (runs on 127.0.0.1:8000)
+# Start server with HTTP transport (default: 127.0.0.1:8000)
 python alpaca_mcp_server.py --transport http
+
+# Start server with custom host/port for remote access
+python alpaca_mcp_server.py --transport http --host 0.0.0.0 --port 9000
 
 # For systemd service (example from GitHub issue #6)
 # Update your start script to use HTTP transport
 #!/bin/bash
 cd /root/alpaca-mcp-server
 source venv/bin/activate
-exec python3 -u alpaca_mcp_server.py --transport http
+exec python3 -u alpaca_mcp_server.py --transport http --host 0.0.0.0 --port 8000
 ```
 
 **Remote Access Options:**
-1. **SSH tunneling**: `ssh -L 8000:localhost:8000 user@your-server` for secure access (recommended)
-2. **Reverse proxy**: Use nginx/Apache to expose the service securely with authentication
-3. **Direct access**: Server runs on localhost:8000 - configure firewall/proxy for external access
+1. **Direct binding**: Use `--host 0.0.0.0` to bind to all interfaces for direct remote access
+2. **SSH tunneling**: `ssh -L 8000:localhost:8000 user@your-server` for secure access (recommended for localhost binding)
+3. **Reverse proxy**: Use nginx/Apache to expose the service securely with authentication
 
 ### Client Setup
 Update your Claude Desktop configuration to use HTTP:
@@ -659,16 +662,16 @@ Update your Claude Desktop configuration to use HTTP:
 
 ### Troubleshooting HTTP Transport Issues
 - **Port not listening**: Ensure the server started successfully and check firewall settings
-- **Connection refused**: Verify the server is running on 127.0.0.1:8000 (fixed by MCP SDK)
+- **Connection refused**: Verify the server is running on the expected host:port
 - **ENOENT errors**: Make sure you're using the updated server command with `--transport http`
-- **Remote access**: Use SSH tunneling or reverse proxy since server only binds to localhost
-- **Port conflicts**: If port 8000 is busy, stop the conflicting service (MCP SDK uses fixed port)
+- **Remote access**: Use `--host 0.0.0.0` for direct access, or SSH tunneling for localhost binding
+- **Port conflicts**: Use `--port <PORT>` to specify a different port if default is busy
 
 ## Security Notice
 
 This server can place real trades and access your portfolio. Treat your API keys as sensitive credentials. Review all actions proposed by the LLM carefully, especially for complex options strategies or multi-leg trades.
 
-**HTTP Transport Security**: When using HTTP transport, the server binds to localhost (127.0.0.1:8000) only for security. For remote access, use SSH tunneling (`ssh -L 8000:localhost:8000 user@server`) or a reverse proxy with authentication for secure access.
+**HTTP Transport Security**: When using HTTP transport, the server defaults to localhost (127.0.0.1:8000) for security. For remote access, you can bind to all interfaces with `--host 0.0.0.0`, use SSH tunneling (`ssh -L 8000:localhost:8000 user@server`), or set up a reverse proxy with authentication for secure access.
 
 ## Usage Analytics Notice
 
