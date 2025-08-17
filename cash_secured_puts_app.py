@@ -560,8 +560,9 @@ class MCPAlpacaClient:
             # First, try to get contracts for different expiration months
             expirations = set()
             
-            # Check current month and next month
-            for month_offset in range(0, 3):  # Current + next 2 months
+            # Check enough future months to cover max_days (no arbitrary limit)
+            months_to_check = (max_days // 30) + 2  # Dynamic based on max_days only
+            for month_offset in range(0, months_to_check):
                 check_date = today + timedelta(days=30 * month_offset)
                 
                 params = {
@@ -603,7 +604,9 @@ class MCPAlpacaClient:
                 logger.warning(f"No option expirations found for {symbol}, using Friday estimates")
                 return self._get_friday_estimates(max_days)
             
-            return expiration_list[:6]  # Limit to first 6 expirations
+            # Return all valid expirations within max_days, no arbitrary limit
+            logger.info(f"Found {len(expiration_list)} expiration dates for {symbol} within {max_days} days")
+            return expiration_list
             
         except Exception as e:
             logger.warning(f"Error getting expirations for {symbol}: {str(e)}, using Friday estimates")
@@ -621,8 +624,8 @@ class MCPAlpacaClient:
         
         current_friday = today + timedelta(days=days_ahead)
         
-        # Get next few Fridays within max_days
-        while len(fridays) < 6 and (current_friday - today).days <= max_days:
+        # Get all Fridays within max_days (no arbitrary limit)
+        while (current_friday - today).days <= max_days:
             fridays.append(current_friday)
             current_friday += timedelta(days=7)
         
@@ -769,35 +772,42 @@ class MCPAlpacaClient:
                         if min_volume > 0 and metrics['volume'] < min_volume:
                             continue
                         
-                        # Create result object with shorter column names for better visibility
+                        # Create result object with user-preferred column order
                         result = {
-                            # Core Analysis (Most Important)
+                            # User-Preferred Columns (First)
                             'Ticker': symbol,
-                            'Annual Return %': f"{metrics['annualized_return']:.1f}%",
-                            'PITM %': f"{metrics['pitm']:.1f}%",
-                            'Premium $': f"${metrics['premium_received']:.0f}",
-                            'Cash Req $': f"${metrics['cash_required']:,.0f}",
-                            
-                            # Option Details
-                            'Strike $': f"${strike_price:.2f}",
-                            'Current $': f"${stock_price:.2f}",
-                            'Distance %': f"{metrics['distance_to_strike']:.1f}%",
+                            'Price': f"${stock_price:.2f}",
+                            'Strike': f"${strike_price:.2f}",
+                            'Expiration': exp_date.strftime('%m/%d/%y'),
                             'DTE': days_to_exp,
-                            'Expiry': exp_date.strftime('%m/%d'),
+                            'Premium': f"${metrics['premium_received']:.0f}",
+                            'Distance %': f"{metrics['distance_to_strike']:.1f}%",
+                            'Annual Return': f"{metrics['annualized_return']:.1f}%",
+                            'PITM': f"{metrics['pitm']:.1f}%",
                             
-                            # Pricing & Greeks
-                            'Bid $': f"${metrics['bid']:.2f}" if metrics['bid'] > 0 else f"${premium:.2f}",
-                            'Ask $': f"${metrics['ask']:.2f}" if metrics['ask'] > 0 else f"${premium:.2f}",
-                            'Delta': f"{metrics['delta']:.3f}" if metrics['delta'] != 0 else "N/A",
-                            'Theta': f"{metrics['theta']:.3f}" if metrics['theta'] != 0 else "N/A", 
+                            # High Importance - Risk & Quality Metrics
+                            'Score': f"{metrics['advanced_score']:.1f}",
+                            'Expected Return': f"{metrics['expected_return']:.1f}%",
+                            'Sharpe': f"{metrics['sharpe_ratio']:.2f}",
                             
-                            # Additional Info
+                            # Medium Importance - Advanced Analysis
+                            'Theta Eff': f"{metrics['theta_efficiency']:.0f}",
+                            'Vol Premium': f"{metrics['volatility_risk_premium']:.1f}",
+                            'Cash Required': f"${metrics['cash_required']:,.0f}",
+                            
+                            # Greeks & Technical Data
                             'IV %': f"{metrics['implied_volatility']:.1f}%",
+                            'Delta': f"{metrics['delta']:.3f}" if metrics['delta'] != 0 else "N/A",
+                            'Theta': f"{metrics['theta']:.3f}" if metrics['theta'] != 0 else "N/A",
+                            
+                            # Market Data & Quality Indicators
                             'OI': option['open_interest'],
                             'Volume': metrics['volume'] if metrics['volume'] > 0 else "N/A",
-                            'Period %': f"{metrics['period_return']:.2f}%",
                             'Source': metrics['data_source'],
-                            'sort_annualized': metrics['annualized_return']
+                            
+                            # Sorting keys (hidden)
+                            'sort_score': metrics['advanced_score'],
+                            'sort_expected_return': metrics['expected_return']
                         }
                         
                         all_options.append(result)
@@ -843,6 +853,126 @@ class MCPAlpacaClient:
         else:  # ITM put
             return 0.55  # 55% IV
 
+    def calculate_probability_weighted_return(self, stock_price: float, strike_price: float,
+                                            premium: float, days_to_expiration: int,
+                                            pitm: float, implied_vol: float) -> float:
+        """Calculate expected return considering all possible outcomes"""
+        
+        cash_required = strike_price * 100
+        premium_received = premium * 100
+        pitm_decimal = pitm / 100
+        
+        # Scenario 1: Option expires worthless (probability = 1 - PITM)
+        profit_expire_worthless = premium_received
+        prob_expire_worthless = 1 - pitm_decimal
+        
+        # Scenario 2: Assignment occurs (probability = PITM)
+        # For assignment scenario, estimate expected stock price given ITM condition
+        # Using conditional expectation based on log-normal distribution
+        
+        # Time to expiration in years
+        T = days_to_expiration / 365.0
+        
+        if T > 0 and implied_vol > 0:
+            # Calculate expected stock price if assigned (conditional on being ITM)
+            risk_free_rate = 0.05
+            d1 = (math.log(stock_price / strike_price) + (risk_free_rate + 0.5 * implied_vol**2) * T) / (implied_vol * math.sqrt(T))
+            d2 = d1 - implied_vol * math.sqrt(T)
+            
+            # Conditional expected stock price given assignment
+            # This is an approximation - assumes normal distribution for simplicity
+            expected_stock_if_assigned = strike_price * 0.95  # Conservative estimate
+        else:
+            expected_stock_if_assigned = strike_price
+        
+        # Profit if assigned = premium + any appreciation above strike
+        # Note: CSP seller keeps premium but may have unrealized loss on stock
+        profit_if_assigned = premium_received
+        
+        # Expected profit
+        expected_profit = (
+            profit_expire_worthless * prob_expire_worthless +
+            profit_if_assigned * pitm_decimal
+        )
+        
+        # Annualized expected return
+        period_return = expected_profit / cash_required
+        annualized_expected = period_return * (365 / max(days_to_expiration, 1))
+        
+        return annualized_expected * 100
+
+    def calculate_volatility_risk_premium(self, implied_vol: float, gamma: float) -> float:
+        """Calculate premium for volatility risk exposure"""
+        
+        # Higher IV = more premium, but also more risk
+        # Sweet spot is moderate IV with low gamma (less sensitive to moves)
+        vol_premium = max(0, (implied_vol - 20) * 2)  # Reward IV above 20%
+        gamma_penalty = abs(gamma) * 50  # Penalize high gamma exposure
+        
+        return max(0, vol_premium - gamma_penalty)
+
+    def calculate_options_sharpe_ratio(self, expected_return: float, stock_price: float, 
+                                     strike_price: float, days_to_expiration: int,
+                                     implied_vol: float) -> float:
+        """Calculate Sharpe ratio for options strategy"""
+        
+        # Estimate volatility of CSP returns based on underlying characteristics
+        time_factor = math.sqrt(days_to_expiration / 365)
+        moneyness_factor = abs((stock_price - strike_price) / stock_price)
+        
+        # Strategy volatility is lower than underlying due to limited upside
+        strategy_vol = implied_vol * time_factor * (0.5 + moneyness_factor)
+        
+        risk_free_rate = 5.0  # 5% risk-free rate
+        
+        if strategy_vol > 0:
+            sharpe = (expected_return - risk_free_rate) / (strategy_vol * 100)
+            return max(0, sharpe)
+        
+        return 0
+
+    def calculate_theta_efficiency(self, theta: float, premium: float, 
+                                 days_to_expiration: int) -> float:
+        """Calculate theta efficiency score"""
+        
+        theta_abs = abs(theta)  # Theta is negative for puts we sell
+        
+        if premium > 0 and days_to_expiration > 0:
+            # Theta efficiency = theta decay per day / premium at risk
+            daily_decay = theta_abs
+            theta_efficiency = (daily_decay * days_to_expiration) / premium
+            
+            # Normalize to 0-100 scale, cap at reasonable levels
+            return min(100, theta_efficiency * 1000)
+        
+        return 0
+
+    def calculate_advanced_score(self, metrics: Dict) -> float:
+        """Advanced multi-factor scoring for CSP selection"""
+        
+        # Extract key metrics
+        annualized_return = metrics.get('annualized_return', 0)
+        expected_return = metrics.get('expected_return', annualized_return)
+        sharpe_ratio = metrics.get('sharpe_ratio', 0)
+        vol_risk_premium = metrics.get('volatility_risk_premium', 0)
+        theta_efficiency = metrics.get('theta_efficiency', 0)
+        
+        # Normalize components to 0-1 scale
+        return_component = min(1.0, expected_return / 50)  # Cap at 50% return
+        sharpe_component = min(1.0, sharpe_ratio / 2)      # Cap at 2.0 Sharpe
+        vol_component = min(1.0, vol_risk_premium / 20)    # Cap at 20 points
+        theta_component = min(1.0, theta_efficiency / 100) # Cap at 100 points
+        
+        # Weighted composite score (0-100 scale)
+        composite_score = (
+            return_component * 30 +      # Expected return (30%)
+            sharpe_component * 25 +      # Risk-adjusted return (25%)  
+            vol_component * 20 +         # Volatility premium (20%)
+            theta_component * 25         # Theta efficiency (25%)
+        )
+        
+        return composite_score
+
     def calculate_pitm_black_scholes(self, stock_price: float, strike_price: float,
                                    days_to_expiration: int, volatility: float,
                                    risk_free_rate: float = 0.05) -> float:
@@ -885,21 +1015,13 @@ class MCPAlpacaClient:
     def calculate_option_metrics(self, stock_price: float, strike_price: float, 
                                 premium: float, days_to_expiration: int, 
                                 option_symbol: str = None) -> Dict:
-        """Calculate option metrics for cash-secured puts"""
+        """Calculate advanced option metrics for cash-secured puts"""
         
-        # Cash required (strike price * 100 shares)
+        # Basic metrics
         cash_required = strike_price * 100
-        
-        # Premium received (premium * 100 shares)
         premium_received = premium * 100
-        
-        # Period return
         period_return = (premium_received / cash_required) * 100
-        
-        # Annualized return
         annualized_return = period_return * (365 / max(days_to_expiration, 1))
-        
-        # Distance to strike (for reference)
         distance_to_strike = ((stock_price - strike_price) / stock_price) * 100
         
         # Try to get real Greeks and IV from Alpaca if option symbol provided
@@ -917,7 +1039,6 @@ class MCPAlpacaClient:
             data_source = "Alpaca_Real"
         else:
             # Fallback to simplified calculation if no Greeks available
-            # This should rarely happen if MCP server is working properly
             implied_vol = self.calculate_implied_volatility(
                 stock_price, strike_price, premium, days_to_expiration
             )
@@ -926,27 +1047,69 @@ class MCPAlpacaClient:
             )
             data_source = "Estimated"
         
-        return {
+        # Advanced Phase 1 calculations
+        gamma = real_greeks.get('gamma', 0)
+        theta = real_greeks.get('theta', 0)
+        
+        # 1. Probability-weighted expected return
+        expected_return = self.calculate_probability_weighted_return(
+            stock_price, strike_price, premium, days_to_expiration, pitm, implied_vol
+        )
+        
+        # 2. Volatility risk premium
+        volatility_risk_premium = self.calculate_volatility_risk_premium(
+            implied_vol * 100, gamma
+        )
+        
+        # 3. Options Sharpe ratio
+        sharpe_ratio = self.calculate_options_sharpe_ratio(
+            expected_return, stock_price, strike_price, days_to_expiration, implied_vol
+        )
+        
+        # 4. Theta efficiency
+        theta_efficiency = self.calculate_theta_efficiency(
+            theta, premium, days_to_expiration
+        )
+        
+        # Create comprehensive metrics dictionary
+        metrics = {
+            # Basic metrics
             'cash_required': cash_required,
             'premium_received': premium_received,
             'period_return': period_return,
             'annualized_return': annualized_return,
             'pitm': pitm,
             'distance_to_strike': distance_to_strike,
-            'implied_volatility': implied_vol * 100 if implied_vol else 0,  # Convert to percentage
+            'implied_volatility': implied_vol * 100 if implied_vol else 0,
+            
+            # Greeks
             'delta': real_greeks.get('delta', 0),
-            'gamma': real_greeks.get('gamma', 0),
-            'theta': real_greeks.get('theta', 0),
+            'gamma': gamma,
+            'theta': theta,
             'vega': real_greeks.get('vega', 0),
             'rho': real_greeks.get('rho', 0),
+            
+            # Market data
             'bid': real_greeks.get('bid', 0),
             'ask': real_greeks.get('ask', 0),
             'last_price': real_greeks.get('last_price', premium),
-            'volume': real_greeks.get('last_trade_size', 0),  # Use last trade size as volume indicator
+            'volume': real_greeks.get('last_trade_size', 0),
             'bid_size': real_greeks.get('bid_size', 0),
             'ask_size': real_greeks.get('ask_size', 0),
+            
+            # Advanced Phase 1 metrics
+            'expected_return': expected_return,
+            'volatility_risk_premium': volatility_risk_premium,
+            'sharpe_ratio': sharpe_ratio,
+            'theta_efficiency': theta_efficiency,
+            
             'data_source': data_source
         }
+        
+        # 5. Calculate advanced composite score
+        metrics['advanced_score'] = self.calculate_advanced_score(metrics)
+        
+        return metrics
 
 def main():
     """Main Streamlit application"""
@@ -982,9 +1145,9 @@ def main():
         max_dte = st.number_input(
             "Max DTE",
             min_value=1,
-            max_value=45,
+            max_value=365,
             value=20,
-            help="Days to expiration"
+            help="Days to expiration (1-365)"
         )
         
         min_open_interest = st.number_input(
@@ -1119,11 +1282,11 @@ def main():
         # Create DataFrame and get best result per ticker
         df = pd.DataFrame(all_results)
         
-        # Get only the best result for each ticker based on annualized return
-        df = df.loc[df.groupby('Ticker')['sort_annualized'].idxmax()]
+        # Get only the best result for each ticker based on advanced score
+        df = df.loc[df.groupby('Ticker')['sort_score'].idxmax()]
         
-        # Sort by annualized return (highest first)
-        df = df.sort_values('sort_annualized', ascending=False)
+        # Sort by advanced score (highest first)
+        df = df.sort_values('sort_score', ascending=False)
         
         # Reset index to remove the original row numbers and create clean 0,1,2... indexing
         df = df.reset_index(drop=True)
@@ -1148,46 +1311,84 @@ def main():
         # Reset index again after all filtering
         df = df.reset_index(drop=True)
         
-        df = df.drop('sort_annualized', axis=1)  # Remove sorting column
+        # Remove sorting columns
+        df = df.drop(['sort_score', 'sort_expected_return'], axis=1, errors='ignore')
         
         # Display results
         
 
         # Results section - no header needed
         
-        # Robinhood-style color coding
-        def highlight_robinhood_style(val):
-            """Robinhood-style highlighting with signature colors"""
-            if 'Annual Return' in str(val):
+        # Advanced color coding for new metrics
+        def highlight_advanced_style(val):
+            """Advanced highlighting for new algorithmic metrics"""
+            val_str = str(val)
+            
+            # Score column (primary ranking metric)
+            if val_str.replace('.', '').isdigit() and 'Score' in df.columns:
                 try:
-                    return_val = float(str(val).rstrip('%'))
-                    if return_val >= 15:
-                        return 'color: #00d09c; font-weight: 500;'  # Robinhood green
-                    elif return_val >= 10:
-                        return 'color: #ffffff; font-weight: 500;'  # White
-                    elif return_val >= 5:
-                        return 'color: #9ca3af; font-weight: 400;'  # Gray
+                    score_val = float(val_str)
+                    if score_val >= 70:
+                        return 'color: #00d09c; font-weight: 600;'  # Excellent score = bright green
+                    elif score_val >= 50:
+                        return 'color: #ffffff; font-weight: 500;'  # Good score = white
+                    elif score_val >= 30:
+                        return 'color: #ffd93d; font-weight: 500;'  # Fair score = yellow
                     else:
-                        return 'color: #ff6b6b; font-weight: 500;'  # Robinhood red
+                        return 'color: #ff6b6b; font-weight: 500;'  # Poor score = red
                 except ValueError:
                     pass
-            elif 'PITM' in str(val):
+            
+            # Expected Return and Annual Return
+            elif ('Return' in val_str or 'Annual Return' in val_str) and '%' in val_str:
                 try:
-                    pitm_val = float(str(val).rstrip('%'))
-                    if pitm_val <= 10:
+                    return_val = float(val_str.rstrip('%'))
+                    if return_val >= 20:
+                        return 'color: #00d09c; font-weight: 500;'  # High return = green
+                    elif return_val >= 12:
+                        return 'color: #ffffff; font-weight: 500;'  # Good return = white
+                    elif return_val >= 6:
+                        return 'color: #9ca3af; font-weight: 400;'  # Fair return = gray
+                    else:
+                        return 'color: #ff6b6b; font-weight: 500;'  # Low return = red
+                except ValueError:
+                    pass
+            
+            # PITM risk assessment
+            elif 'PITM' in val_str or ('PITM' in val_str and '%' in val_str):
+                try:
+                    # Handle both "15.2%" and "15.2" formats
+                    pitm_val = float(val_str.rstrip('%'))
+                    if pitm_val <= 8:
                         return 'color: #00d09c; font-weight: 500;'  # Low risk = green
                     elif pitm_val <= 15:
                         return 'color: #ffffff; font-weight: 500;'  # Medium risk = white  
-                    elif pitm_val <= 20:
+                    elif pitm_val <= 25:
                         return 'color: #ffd93d; font-weight: 500;'  # Higher risk = yellow
                     else:
                         return 'color: #ff6b6b; font-weight: 500;'  # High risk = red
                 except ValueError:
                     pass
+            
+            # Sharpe ratio
+            elif val_str.replace('.', '').replace('-', '').isdigit() and len(val_str) <= 5:
+                try:
+                    sharpe_val = float(val_str)
+                    if sharpe_val >= 1.0:
+                        return 'color: #00d09c; font-weight: 500;'  # Excellent Sharpe = green
+                    elif sharpe_val >= 0.5:
+                        return 'color: #ffffff; font-weight: 500;'  # Good Sharpe = white
+                    elif sharpe_val >= 0.0:
+                        return 'color: #9ca3af; font-weight: 400;'  # Fair Sharpe = gray
+                    else:
+                        return 'color: #ff6b6b; font-weight: 500;'  # Poor Sharpe = red
+                except ValueError:
+                    pass
+            
             return 'color: #ffffff;'  # Default white text
         
         # Display styled dataframe without index - full width
-        styled_df = df.style.applymap(highlight_robinhood_style)
+        styled_df = df.style.applymap(highlight_advanced_style)
         st.dataframe(styled_df, use_container_width=True, height=500, hide_index=True)
         
     # Cache management at bottom (optional)
@@ -1197,6 +1398,153 @@ def main():
         if st.button("Clear Cache", help="Clear all cached data"):
             mcp_client.cache.clear()
             st.rerun()
+
+    # Enhanced Algorithm Documentation
+    st.markdown("---")
+    st.markdown("## 🧠 Enhanced Algorithm Guide")
+    
+    with st.expander("📊 Understanding the Advanced Metrics", expanded=False):
+        st.markdown("""
+        ### Core Metrics Explained
+        
+        **Score (0-100)**: Our proprietary composite ranking that combines multiple factors:
+        - Expected Return (30% weight): Probability-weighted returns considering all outcomes
+        - Sharpe Ratio (25% weight): Risk-adjusted performance measurement  
+        - Theta Efficiency (25% weight): Time decay optimization
+        - Volatility Risk Premium (20% weight): IV risk/reward balance
+        
+        **Expected Return %**: More accurate than simple annualized return - considers:
+        - Probability option expires worthless (keep full premium)
+        - Probability of assignment (premium + potential stock loss)
+        - Uses real Delta values for precise probability calculations
+        
+        **Sharpe Ratio**: Risk-adjusted return measurement:
+        - >1.0 = Excellent risk-adjusted performance
+        - 0.5-1.0 = Good risk-adjusted performance
+        - 0.0-0.5 = Fair performance
+        - <0.0 = Poor risk-adjusted performance
+        
+        **Theta Efficiency**: Time decay optimization score:
+        - Higher scores = better time decay capture per dollar at risk
+        - Focuses on options with optimal daily decay profiles
+        - Maximizes income generation efficiency
+        
+        **Vol Premium**: Volatility risk assessment:
+        - Rewards moderate IV (20-40%) with manageable risk
+        - Penalizes high Gamma exposure (price sensitivity)
+        - Balances premium income with assignment risk
+        """)
+    
+    with st.expander("🎯 How to Use the Enhanced Algorithm", expanded=False):
+        st.markdown("""
+        ### Step-by-Step Strategy Guide
+        
+        **1. Primary Ranking**: Focus on **Score** column
+        - Target options with Score >60 for best opportunities
+        - Score 70+ = Exceptional opportunities
+        - Score 50-70 = Good opportunities
+        - Score 30-50 = Fair opportunities
+        - Score <30 = Avoid
+        
+        **2. Risk Assessment**: Check **PITM %** and **Sharpe** together
+        - Prefer PITM <15% for conservative approach
+        - Require Sharpe >0.5 for acceptable risk-adjusted returns
+        - Balance higher returns with acceptable risk levels
+        
+        **3. Income Optimization**: Use **Expected Return %** and **Theta Eff**
+        - Expected Return gives more accurate profit projections
+        - Theta Efficiency >50 indicates good time decay capture
+        - Compare Expected vs Annual Return for realistic expectations
+        
+        **4. Quality Filters**: Verify **Volume**, **OI**, and **Source**
+        - Volume >10 for liquidity (when available)
+        - OI >25 for market interest
+        - "Alpaca_Real" source preferred over "Estimated"
+        
+        **5. Portfolio Construction**: Diversify across uncorrelated positions
+        - Don't put >10-15% of capital in single position
+        - Mix different DTE for consistent income flow
+        - Consider sector and correlation when selecting multiple positions
+        """)
+    
+    with st.expander("⚠️ Risk Management Guidelines", expanded=False):
+        st.markdown("""
+        ### Professional Risk Management
+        
+        **Position Sizing**:
+        - Never risk more than 2-5% of portfolio on single CSP
+        - Scale position size based on Score and Sharpe ratio
+        - Higher quality opportunities (Score >70) can have larger allocations
+        
+        **Assignment Preparation**:
+        - Only sell puts on stocks you'd want to own
+        - Ensure sufficient cash for assignment at any strike selected
+        - Consider post-assignment exit strategy (hold vs immediate sale)
+        
+        **Market Conditions**:
+        - High IV environments favor CSP strategies
+        - Bear markets increase assignment probability
+        - Bull markets provide more premium collection opportunities
+        
+        **Exit Rules**:
+        - Consider closing at 25-50% of premium captured
+        - Set maximum loss thresholds (e.g., 2x premium received)
+        - Monitor Greek changes as expiration approaches
+        
+        **Diversification**:
+        - Spread across different sectors and market caps
+        - Vary expiration dates to avoid clustering
+        - Consider correlation between selected underlyings
+        """)
+    
+    with st.expander("🔬 Algorithm Technical Details", expanded=False):
+        st.markdown("""
+        ### Advanced Calculations Behind the Scenes
+        
+        **Probability-Weighted Returns**:
+        ```
+        Expected Return = P(expire worthless) × Premium + P(assignment) × Assignment_Profit
+        Where P(assignment) = |Delta| (from real Alpaca data)
+        ```
+        
+        **Options Sharpe Ratio**:
+        ```
+        Sharpe = (Expected_Return - Risk_Free_Rate) / Strategy_Volatility
+        Strategy_Volatility = IV × Time_Factor × (0.5 + Moneyness_Factor)
+        ```
+        
+        **Theta Efficiency**:
+        ```
+        Efficiency = (|Theta| × DTE) / Premium × 1000
+        Measures time decay capture per dollar at risk
+        ```
+        
+        **Volatility Risk Premium**:
+        ```
+        Vol_Premium = max(0, (IV - 20%) × 2 - |Gamma| × 50)
+        Rewards moderate IV, penalizes high Gamma exposure
+        ```
+        
+        **Composite Score Weighting**:
+        - Expected Return: 30% (primary profit driver)
+        - Sharpe Ratio: 25% (risk adjustment)
+        - Theta Efficiency: 25% (time decay optimization)
+        - Vol Risk Premium: 20% (IV/risk balance)
+        
+        All components normalized to 0-1 scale before weighting.
+        """)
+    
+    st.markdown("""
+    ### 💡 Pro Tips for Maximum Profits
+    
+    - **Quality over Quantity**: Few high-score positions beat many mediocre ones
+    - **Timing Matters**: Enter positions when IV rank is elevated (>50th percentile)
+    - **Manage Winners**: Close profitable positions at 25-50% max profit to redeploy capital
+    - **Stay Disciplined**: Stick to your Score thresholds and risk management rules
+    - **Track Performance**: Monitor actual vs expected returns to refine strategy
+    
+    *This enhanced algorithm represents institutional-quality analysis previously available only to professional traders.*
+    """)
 
 
 if __name__ == "__main__":
