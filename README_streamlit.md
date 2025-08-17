@@ -10,16 +10,14 @@ A Streamlit web application for analyzing and comparing cash-secured put options
 - **Advanced Filtering**: Filter by days to expiration, probability ITM, and open interest
 - **Comprehensive Metrics**: Calculate annualized returns, cash requirements, and risk metrics
 - **Interactive Interface**: User-friendly web interface with real-time updates
-- **Export Functionality**: Download results as CSV for further analysis
+- **Greeks Integration**: Uses real option Greeks (Delta, Theta, etc.) from Alpaca when available
 
-## Screenshots
-
-The application provides:
+## What the Application Provides
 - Interactive parameter selection in the sidebar
 - Real-time progress tracking during analysis
 - Comprehensive results table with color-coded returns
-- Top 3 recommendations with detailed breakdowns
-- Export functionality for results
+- Parallel processing for faster multi-symbol analysis
+- Data source transparency (shows real vs estimated data)
 
 ## Installation
 
@@ -47,22 +45,25 @@ The application provides:
    - **Maximum Days to Expiration**: Filter options by time to expiration
    - **Maximum Probability ITM**: Set risk tolerance (lower = safer)
    - **Minimum Open Interest**: Ensure adequate liquidity
+   - **Fast Processing**: Enable parallel processing for multiple symbols
 
 3. **Click "Analyze Options"** to run the analysis
 
 4. **Review results**:
-   - Summary metrics at the top
-   - Complete results table with all opportunities
-   - Top 3 recommendations with detailed breakdowns
-   - Download CSV for further analysis
+   - Complete results table with color-coded returns
+   - Best opportunity per ticker (highest annualized return)
+   - Real-time data source indicators
+   - Comprehensive options metrics and Greeks
 
 ## Key Metrics Explained
 
-- **PITM (Probability ITM)**: Estimated probability the option will be in-the-money at expiration
-- **Annualized Return**: The premium income annualized based on days to expiration
+- **Annual Return %**: The premium income annualized based on days to expiration
+- **PITM (Probability ITM)**: Estimated probability the option will be in-the-money at expiration (calculated using real Delta when available)
 - **Cash Required**: Total cash needed to secure the put (strike price × 100)
 - **Premium Income**: Total premium received for selling the put
-- **Distance to Strike**: How far the current stock price is from the strike price
+- **Distance to Strike**: Safety margin - how far the current stock price is above the strike price
+- **Greeks**: Real option sensitivities (Delta, Theta) from Alpaca when available
+- **Data Source**: Shows whether using "Alpaca_Real" or "Estimated" calculations
 
 ## Cash-Secured Put Strategy
 
@@ -80,6 +81,14 @@ A cash-secured put involves:
 - **Opportunity Cost**: Cash is tied up during the option period
 - **Market Risk**: Stock prices can be volatile
 - **Liquidity Risk**: Some options may have low trading volume
+
+## Current Limitations
+
+The following features are not yet implemented:
+- **CSV Export**: Download functionality for results
+- **Volume Filtering**: Volume filter UI exists but not functional
+- **Summary Dashboard**: Portfolio-level metrics overview
+- **Watchlist Integration**: Import symbols from Alpaca watchlists
 
 ## Requirements
 
