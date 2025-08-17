@@ -19,7 +19,59 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from scipy.stats import norm
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
+import json
+import os
+
+# Configuration loading functions
+def load_config(config_path: str = "config.json") -> Dict[str, Any]:
+    """Load configuration from JSON file"""
+    try:
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as file:
+                config = json.load(file)
+                print(f"Configuration loaded from {config_path}")
+                return config
+        else:
+            print(f"Config file {config_path} not found, using defaults")
+            return get_default_config()
+    except Exception as e:
+        print(f"Error loading config file: {e}")
+        return get_default_config()
+
+def get_default_config() -> Dict[str, Any]:
+    """Return default configuration if file is missing"""
+    return {
+        "default_symbols": "AAPL,MSFT,GOOGL,TSLA,NVDA",
+        "ui_settings": {
+            "page_title": "Cash Secured Puts Analyzer",
+            "page_icon": None
+        },
+        "filter_defaults": {
+            "max_dte": 20,
+            "max_pitm": 20,
+            "min_open_interest": 10,
+            "min_volume": 0
+        },
+        "processing": {
+            "fast_processing_default": True,
+            "max_parallel_workers": 4
+        }
+    }
+
+def get_config_value(config: Dict[str, Any], key_path: str, default: Any = None) -> Any:
+    """Get configuration value using dot notation (e.g., 'filter_defaults.max_dte')"""
+    try:
+        keys = key_path.split('.')
+        value = config
+        for key in keys:
+            value = value[key]
+        return value
+    except (KeyError, TypeError):
+        return default
+
+# Load configuration
+config = load_config()
 
 # Configure logging for validation errors
 logging.basicConfig(
@@ -32,9 +84,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configure Streamlit page
+ui_settings = get_config_value(config, 'ui_settings', {})
 st.set_page_config(
-    page_title="Options - Cash-Secured Puts",
-    page_icon=None,
+    page_title=get_config_value(config, 'ui_settings.page_title', "Options - Cash-Secured Puts"),
+    page_icon=get_config_value(config, 'ui_settings.page_icon'),
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -1128,8 +1181,8 @@ def main():
     # Simple sidebar header
     st.sidebar.markdown("### Filters")
     
-    # Stock symbols input
-    default_symbols = "PLTR,UNH,LLY"
+    # Stock symbols input - load from config
+    default_symbols = get_config_value(config, 'default_symbols', "AAPL,MSFT,GOOGL")
     symbols_input = st.sidebar.text_input(
         "Stock Symbols (comma-separated)", 
         value=default_symbols,
@@ -1141,12 +1194,15 @@ def main():
     # Compact filters in columns
     col1, col2 = st.sidebar.columns(2)
     
+    # Load filter defaults from config
+    filter_defaults = get_config_value(config, 'filter_defaults', {})
+    
     with col1:
         max_dte = st.number_input(
             "Max DTE",
             min_value=1,
             max_value=365,
-            value=20,
+            value=get_config_value(config, 'filter_defaults.max_dte', 20),
             help="Days to expiration (1-365)"
         )
         
@@ -1154,7 +1210,7 @@ def main():
             "Min OI",
             min_value=0,
             max_value=1000,
-            value=10,
+            value=get_config_value(config, 'filter_defaults.min_open_interest', 10),
             help="Open interest"
         )
     
@@ -1163,7 +1219,7 @@ def main():
             "Max PITM %",
             min_value=5,
             max_value=50,
-            value=20,
+            value=get_config_value(config, 'filter_defaults.max_pitm', 20),
             help="Probability ITM"
         )
         
@@ -1171,7 +1227,7 @@ def main():
             "Min Volume",
             min_value=0,
             max_value=10000,
-            value=0,
+            value=get_config_value(config, 'filter_defaults.min_volume', 0),
             help="Daily volume"
         )
     
@@ -1180,8 +1236,14 @@ def main():
     if st.sidebar.button("Analyze Options", type="primary", use_container_width=True):
         # Analysis logic starts here
         
+        # Load processing settings from config
+        processing_settings = get_config_value(config, 'processing', {})
+        
         # Compact settings
-        use_parallel = st.sidebar.checkbox("Fast Processing", value=True)
+        use_parallel = st.sidebar.checkbox(
+            "Fast Processing", 
+            value=get_config_value(config, 'processing.fast_processing_default', True)
+        )
         
         # Input validation
         if not symbols:
@@ -1226,7 +1288,8 @@ def main():
             # Parallel processing for multiple symbols
             status_text.text("Processing symbols in parallel...")
             
-            with ThreadPoolExecutor(max_workers=min(len(symbols), 4)) as executor:
+            max_workers = get_config_value(config, 'processing.max_parallel_workers', 4)
+            with ThreadPoolExecutor(max_workers=min(len(symbols), max_workers)) as executor:
                 # Submit all symbol processing tasks
                 future_to_symbol = {
                     executor.submit(mcp_client.process_symbol_parallel, symbol, max_dte, max_pitm, min_open_interest, min_volume): symbol 
@@ -1401,9 +1464,9 @@ def main():
 
     # Enhanced Algorithm Documentation
     st.markdown("---")
-    st.markdown("## 🧠 Enhanced Algorithm Guide")
+    st.markdown("## Enhanced Algorithm Guide")
     
-    with st.expander("📊 Understanding the Advanced Metrics", expanded=False):
+    with st.expander("Understanding the Advanced Metrics", expanded=False):
         st.markdown("""
         ### Core Metrics Explained
         
@@ -1435,7 +1498,7 @@ def main():
         - Balances premium income with assignment risk
         """)
     
-    with st.expander("🎯 How to Use the Enhanced Algorithm", expanded=False):
+    with st.expander("How to Use the Enhanced Algorithm", expanded=False):
         st.markdown("""
         ### Step-by-Step Strategy Guide
         
@@ -1467,7 +1530,7 @@ def main():
         - Consider sector and correlation when selecting multiple positions
         """)
     
-    with st.expander("⚠️ Risk Management Guidelines", expanded=False):
+    with st.expander("Risk Management Guidelines", expanded=False):
         st.markdown("""
         ### Professional Risk Management
         
@@ -1535,7 +1598,7 @@ def main():
         """)
     
     st.markdown("""
-    ### 💡 Pro Tips for Maximum Profits
+            ### Pro Tips for Maximum Profits
     
     - **Quality over Quantity**: Few high-score positions beat many mediocre ones
     - **Timing Matters**: Enter positions when IV rank is elevated (>50th percentile)

@@ -1,0 +1,17 @@
+{
+  "default_symbols": "PLTR,UNH,LLY,NVDA,TSLA,AMZN,META,MSFT,GOOGL,AMD,HOOD,CRCL,MP,OKLO,QBTS,PONY,PGY,IREN,ASTS,HIMS,SOFI",
+  "ui_settings": {
+    "page_title": "Cash Secured Puts Analyzer",
+    "page_icon": null
+  },
+  "filter_defaults": {
+    "max_dte": 45,
+    "max_pitm": 20,
+    "min_open_interest": 10,
+    "min_volume": 0
+  },
+  "processing": {
+    "fast_processing_default": true,
+    "max_parallel_workers": 10
+  }
+}
