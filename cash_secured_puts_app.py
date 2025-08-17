@@ -450,13 +450,13 @@ class MCPAlpacaClient:
             return []
 
     def get_option_snapshot(self, symbol: str) -> Optional[Dict]:
-        """Get option snapshot with Greeks and pricing data from MCP server"""
+        """Get option snapshot with Greeks, pricing data, and volume from MCP server"""
         try:
             params = {"symbol_or_symbols": symbol}
             result = self._call_mcp_function("mcp_alpaca_get_option_snapshot", params)
             
             if result and "result" in result:
-                # Parse the text response to extract Greeks and pricing data
+                # Parse the text response to extract Greeks, pricing data, and volume
                 snapshot_text = result["result"]
                 lines = snapshot_text.split('\n')
                 data = {}
@@ -517,6 +517,25 @@ class MCPAlpacaClient:
                             # This is likely the trade price
                             price_str = line.split('Price:')[1].strip().replace('$', '')
                             data['last_price'] = float(price_str)
+                        except ValueError:
+                            continue
+                    elif 'Size:' in line and 'Bid Size:' not in line and 'Ask Size:' not in line:
+                        try:
+                            # This is likely the trade size (volume indicator)
+                            size_str = line.split('Size:')[1].strip()
+                            data['last_trade_size'] = int(size_str)
+                        except ValueError:
+                            continue
+                    elif 'Bid Size:' in line:
+                        try:
+                            bid_size_str = line.split('Bid Size:')[1].strip()
+                            data['bid_size'] = int(bid_size_str)
+                        except ValueError:
+                            continue
+                    elif 'Ask Size:' in line:
+                        try:
+                            ask_size_str = line.split('Ask Size:')[1].strip()
+                            data['ask_size'] = int(ask_size_str)
                         except ValueError:
                             continue
                 
@@ -690,7 +709,7 @@ class MCPAlpacaClient:
         return metrics
     
     def process_symbol_parallel(self, symbol: str, max_dte: int, max_pitm: float, 
-                               min_open_interest: int) -> List[Dict]:
+                               min_open_interest: int, min_volume: int = 0) -> List[Dict]:
         """Process a single symbol and return all valid options"""
         try:
             # Get stock quote with validation
@@ -746,6 +765,10 @@ class MCPAlpacaClient:
                         if metrics['pitm'] > max_pitm:
                             continue
                         
+                        # Apply volume filter if specified
+                        if min_volume > 0 and metrics['volume'] < min_volume:
+                            continue
+                        
                         # Create result object with shorter column names for better visibility
                         result = {
                             # Core Analysis (Most Important)
@@ -771,6 +794,7 @@ class MCPAlpacaClient:
                             # Additional Info
                             'IV %': f"{metrics['implied_volatility']:.1f}%",
                             'OI': option['open_interest'],
+                            'Volume': metrics['volume'] if metrics['volume'] > 0 else "N/A",
                             'Period %': f"{metrics['period_return']:.2f}%",
                             'Source': metrics['data_source'],
                             'sort_annualized': metrics['annualized_return']
@@ -918,6 +942,9 @@ class MCPAlpacaClient:
             'bid': real_greeks.get('bid', 0),
             'ask': real_greeks.get('ask', 0),
             'last_price': real_greeks.get('last_price', premium),
+            'volume': real_greeks.get('last_trade_size', 0),  # Use last trade size as volume indicator
+            'bid_size': real_greeks.get('bid_size', 0),
+            'ask_size': real_greeks.get('ask_size', 0),
             'data_source': data_source
         }
 
@@ -1039,7 +1066,7 @@ def main():
             with ThreadPoolExecutor(max_workers=min(len(symbols), 4)) as executor:
                 # Submit all symbol processing tasks
                 future_to_symbol = {
-                    executor.submit(mcp_client.process_symbol_parallel, symbol, max_dte, max_pitm, min_open_interest): symbol 
+                    executor.submit(mcp_client.process_symbol_parallel, symbol, max_dte, max_pitm, min_open_interest, min_volume): symbol 
                     for symbol in symbols
                 }
                 
@@ -1067,7 +1094,7 @@ def main():
                 progress_bar.progress(progress)
                 
                 try:
-                    symbol_results = mcp_client.process_symbol_parallel(symbol, max_dte, max_pitm, min_open_interest)
+                    symbol_results = mcp_client.process_symbol_parallel(symbol, max_dte, max_pitm, min_open_interest, min_volume)
                     all_results.extend(symbol_results)
                     logger.info(f"Sequential processing completed for {symbol}: {len(symbol_results)} options")
                 except Exception as e:
@@ -1075,11 +1102,7 @@ def main():
                     st.warning(f"Error processing {symbol}")
                     continue
         
-        # Apply volume filter if specified
-        if min_volume > 0:
-            # Note: Volume data would need to be added to option contracts
-            # For now, we'll just log this requirement
-            logger.info(f"Volume filter requested: {min_volume} (feature requires additional API integration)")
+        # Volume filtering is now implemented within option processing
         
         processing_time = time.time() - start_time
         logger.info(f"Total processing time: {processing_time:.2f} seconds")
