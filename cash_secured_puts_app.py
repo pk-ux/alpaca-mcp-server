@@ -1450,9 +1450,18 @@ def main():
             
             return 'color: #ffffff;'  # Default white text
         
-        # Display styled dataframe without index - full width
+        # Calculate dynamic height based on number of rows
+        num_rows = len(df)
+        row_height = 35  # Height per row in pixels
+        header_height = 50  # Height for header row
+        min_height = 200  # Minimum height for small datasets
+        
+        # Simple height calculation
+        dynamic_height = max(min_height, header_height + (num_rows * row_height))
+        
+        # Display styled dataframe with dynamic height
         styled_df = df.style.applymap(highlight_advanced_style)
-        st.dataframe(styled_df, use_container_width=True, height=500, hide_index=True)
+        st.dataframe(styled_df, use_container_width=True, height=int(dynamic_height), hide_index=True)
         
     # Cache management at bottom (optional)
     with st.sidebar.expander("Advanced", expanded=False):
